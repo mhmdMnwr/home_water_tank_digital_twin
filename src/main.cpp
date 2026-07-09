@@ -110,11 +110,10 @@ void handleJS() {
 void handleSensor() {
   Serial.printf("[REQ] GET /api/sensor  → %.1f cm\n", lastDistance);
 
-  String json = "{";
-  json += "\"distance_cm\":" + String(lastDistance, 1);
-  json += ",\"tank_depth_cm\":" + String(TANK_DEPTH_CM);
-  json += ",\"sensor_ok\":" + String(lastDistance > 0 ? "true" : "false");
-  json += "}";
+  char json[128];
+  snprintf(json, sizeof(json), 
+           "{\"distance_cm\":%.1f,\"tank_depth_cm\":%d,\"sensor_ok\":%s}", 
+           lastDistance, TANK_DEPTH_CM, lastDistance > 0 ? "true" : "false");
 
   server.sendHeader("Access-Control-Allow-Origin", "*");
   server.sendHeader("Cache-Control", "no-cache");
@@ -123,14 +122,12 @@ void handleSensor() {
 
 void handleDebug() {
   Serial.println("[REQ] GET /api/debug");
-  String info = "{";
-  info += "\"heap_free\":" + String(ESP.getFreeHeap());
-  info += ",\"html_len\":" + String(strlen(PAGE_HTML));
-  info += ",\"css_len\":" + String(strlen(PAGE_CSS));
-  info += ",\"js_len\":" + String(strlen(PAGE_JS));
-  info += ",\"last_distance\":" + String(lastDistance, 1);
-  info += ",\"uptime_ms\":" + String(millis());
-  info += "}";
+  char info[256];
+  snprintf(info, sizeof(info), 
+           "{\"heap_free\":%u,\"html_len\":%u,\"css_len\":%u,\"js_len\":%u,\"last_distance\":%.1f,\"uptime_ms\":%lu}",
+           ESP.getFreeHeap(), (unsigned int)strlen(PAGE_HTML), (unsigned int)strlen(PAGE_CSS), 
+           (unsigned int)strlen(PAGE_JS), lastDistance, millis());
+           
   server.send(200, "application/json", info);
 }
 
@@ -218,7 +215,20 @@ void setup() {
 //  LOOP
 // ═══════════════════════════════════════════════════════════════
 
+unsigned long lastWifiCheck = 0;
+
 void loop() {
+  // Check WiFi connection every 10 seconds
+  if (millis() - lastWifiCheck >= 10000) {
+    lastWifiCheck = millis();
+    if (WiFi.status() != WL_CONNECTED) {
+      Serial.println("[WiFi] Disconnected! Attempting reconnection...");
+      WiFi.disconnect();
+      WiFi.begin(WIFI_SSID, WIFI_PASS);
+      // Let it connect asynchronously in the background
+    }
+  }
+
   server.handleClient();
   updateSensor();  // Non-blocking — reads sensor every 500ms
 }
