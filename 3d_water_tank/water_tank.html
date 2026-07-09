@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Interactive 3D Water Tank Visualization">
+  <title>3D Water Tank</title>
+  <link rel="stylesheet" href="water_tank.css">
+</head>
+<body>
+
+  <!-- Loading -->
+  <div class="loading-overlay" id="loadingOverlay">
+    <div class="loader-ring">
+      <svg viewBox="0 0 60 60">
+        <circle cx="30" cy="30" r="26" />
+      </svg>
+    </div>
+    <p class="loading-text">Initializing</p>
+  </div>
+
+  <!-- Top-Right Stats -->
+  <div class="stats-panel" id="statsPanel">
+    <div class="stat-block">
+      <div class="stat-number" id="statPercent">75</div>
+      <div class="stat-meta">
+        <span class="stat-unit">%</span>
+        <span class="stat-label">Level</span>
+      </div>
+    </div>
+    <div class="stat-separator"></div>
+    <div class="stat-block">
+      <div class="stat-number" id="statVolume">7,500</div>
+      <div class="stat-meta">
+        <span class="stat-unit">L</span>
+        <span class="stat-label">Volume</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Low Level Warning -->
+  <div class="low-warning" id="lowWarning">
+    <div class="warning-pulse"></div>
+    <svg class="warning-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+      <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+    </svg>
+    <div class="warning-content">
+      <span class="warning-title">Low Water Level</span>
+      <span class="warning-sub">Below 25% — Refill recommended</span>
+    </div>
+  </div>
+
+  <!-- 3D Canvas -->
+  <canvas id="tankCanvas"></canvas>
+
+  <!-- Bottom Slider -->
+  <div class="slider-panel" id="sliderPanel">
+    <div class="slider-track-wrapper">
+      <div class="slider-glow" id="sliderGlow"></div>
+      <input type="range" id="waterLevel" min="0" max="100" value="75" step="1">
+      <div class="slider-fill" id="sliderFill"></div>
+    </div>
+    <div class="slider-readout" id="sliderReadout">75%</div>
+  </div>
+
+  <!-- Drag Hint -->
+  <div class="drag-hint" id="dragHint">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/>
+      <path d="M8 12h8M12 8v8"/>
+    </svg>
+    <span>Drag to rotate</span>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="water_tank.js"></script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+if [ -x "$(pwd)/.venv/bin/platformio" ]; then
+  exec "$(pwd)/.venv/bin/platformio" "$@"
+else
+  exec platformio "$@"
+fi
