@@ -75,13 +75,13 @@
   </div>
 
   <script>
-    // Show loading progress and handle CDN failure
+    // Show loading progress
     var _threeLoaded = false;
     document.getElementById('loadingText').textContent = 'Loading 3D engine...';
   </script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"
+  <script src="three.min.js"
     onload="_threeLoaded=true; document.getElementById('loadingText').textContent='Starting...';"
-    onerror="document.getElementById('loadingText').textContent='Error: Cannot load 3D engine. Check internet connection.'; document.getElementById('loadingText').style.color='#f43f5e';"></script>
+    onerror="document.getElementById('loadingText').textContent='Error: Cannot load 3D engine.'; document.getElementById('loadingText').style.color='#f43f5e';"></script>
   <script src="water_tank.js"></script>
 </body>
 

@@ -10,6 +10,7 @@
 #include <WebServer.h>
 #include "config.h"
 #include "web_content.h"
+#include "embedded/three_js_gz.h"
 
 // ── Network ──
 IPAddress local_IP(STATIC_IP);
@@ -22,11 +23,15 @@ WebServer server(WEB_SERVER_PORT);
 
 // ── Sensor state (non-blocking) ──
 float lastDistance = -1.0;
+float emaDistance   = -1.0;   // EMA-filtered distance
 unsigned long lastSensorRead = 0;
 const unsigned long SENSOR_INTERVAL = 500;  // Read sensor every 500ms
 
 // ═══════════════════════════════════════════════════════════════
-//  ULTRASONIC SENSOR
+//  ULTRASONIC SENSOR — 3-Stage Spike Filter
+//  Stage 1: Median filter (kills outlier spikes)
+//  Stage 2: EMA smoothing (removes jitter)
+//  Stage 3: Change clamping (rejects impossible jumps)
 // ═══════════════════════════════════════════════════════════════
 
 float readSingleDistance() {
@@ -45,31 +50,77 @@ float readSingleDistance() {
   return duration * 0.0343 / 2.0;
 }
 
+// Simple insertion sort for small arrays (NUM_SAMPLES ≤ 11)
+void sortArray(float arr[], int n) {
+  for (int i = 1; i < n; i++) {
+    float key = arr[i];
+    int j = i - 1;
+    while (j >= 0 && arr[j] > key) {
+      arr[j + 1] = arr[j];
+      j--;
+    }
+    arr[j + 1] = key;
+  }
+}
+
 // Called in loop() — reads sensor without blocking web server
 void updateSensor() {
   if (millis() - lastSensorRead < SENSOR_INTERVAL) return;
   lastSensorRead = millis();
 
-  float sum = 0;
+  // ── Stage 1: Collect samples and take MEDIAN ──
+  float samples[NUM_SAMPLES];
   int validCount = 0;
 
   for (int i = 0; i < NUM_SAMPLES; i++) {
     float d = readSingleDistance();
     if (d > 0 && d < MAX_VALID_DISTANCE) {
-      sum += d;
-      validCount++;
+      samples[validCount++] = d;
     }
     delayMicroseconds(500);  // Tiny delay between samples
   }
 
-  if (validCount > 0) {
-    lastDistance = sum / validCount;
-  } else {
-    lastDistance = -1.0;
+  if (validCount == 0) {
+    // All readings failed — keep last known value
+    Serial.printf("[SENSOR] NO VALID READINGS  (kept %.1f cm)\n", lastDistance);
+    return;
   }
 
-  Serial.printf("[SENSOR] distance=%.1f cm  valid=%d/%d\n",
-                lastDistance, validCount, NUM_SAMPLES);
+  // Sort valid samples and pick the median
+  sortArray(samples, validCount);
+  float median = samples[validCount / 2];
+
+  // ── Stage 2: EMA smoothing ──
+  float filtered;
+  if (emaDistance < 0) {
+    // First valid reading — initialize EMA
+    emaDistance = median;
+    filtered = median;
+  } else {
+    emaDistance = EMA_ALPHA * median + (1.0 - EMA_ALPHA) * emaDistance;
+    filtered = emaDistance;
+  }
+
+  // ── Stage 3: Spike clamping ──
+  if (lastDistance > 0) {
+    float change = fabs(filtered - lastDistance);
+    if (change > MAX_CHANGE_CM) {
+      // Spike detected — clamp to max allowed change
+      if (filtered > lastDistance) {
+        filtered = lastDistance + MAX_CHANGE_CM;
+      } else {
+        filtered = lastDistance - MAX_CHANGE_CM;
+      }
+      emaDistance = filtered;  // Reset EMA to clamped value
+      Serial.printf("[FILTER] SPIKE CLAMPED  median=%.1f → clamped=%.1f cm\n",
+                    median, filtered);
+    }
+  }
+
+  lastDistance = filtered;
+
+  Serial.printf("[SENSOR] raw_median=%.1f  ema=%.1f  final=%.1f cm  valid=%d/%d\n",
+                median, emaDistance, lastDistance, validCount, NUM_SAMPLES);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -105,6 +156,23 @@ void handleCSS() {
 void handleJS() {
   Serial.println("[REQ] GET /water_tank.js");
   servePROGMEM("application/javascript", PAGE_JS);
+}
+
+void handleThreeJS() {
+  Serial.printf("[REQ] GET /three.min.js  (%d bytes gzipped)\n", (int)THREE_JS_GZ_LEN);
+  server.sendHeader("Content-Encoding", "gzip");
+  server.sendHeader("Cache-Control", "public, max-age=31536000");  // Cache 1 year
+  server.setContentLength(THREE_JS_GZ_LEN);
+  server.send(200, "application/javascript", "");
+
+  const size_t CHUNK_SIZE = 2048;
+  size_t sent = 0;
+  while (sent < THREE_JS_GZ_LEN) {
+    size_t toSend = THREE_JS_GZ_LEN - sent;
+    if (toSend > CHUNK_SIZE) toSend = CHUNK_SIZE;
+    server.sendContent((const char*)(THREE_JS_GZ + sent), toSend);
+    sent += toSend;
+  }
 }
 
 void handleSensor() {
@@ -197,6 +265,7 @@ void setup() {
   server.on("/water_tank.html", handleRoot);
   server.on("/water_tank.css",  handleCSS);
   server.on("/water_tank.js",   handleJS);
+  server.on("/three.min.js",    handleThreeJS);
   server.on("/api/sensor",      handleSensor);
   server.on("/api/debug",       handleDebug);
   server.on("/favicon.ico",     handleFavicon);

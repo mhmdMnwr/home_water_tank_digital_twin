@@ -73,19 +73,19 @@ const char PAGE_HTML[] PROGMEM = R"rawliteral(
   </div>
 
   <script>
-    // Show loading progress and handle CDN failure
+    // Show loading progress
     var _threeLoaded = false;
     document.getElementById('loadingText').textContent = 'Loading 3D engine...';
   </script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"
+  <script src="three.min.js"
           onload="_threeLoaded=true; document.getElementById('loadingText').textContent='Starting...';"
-          onerror="document.getElementById('loadingText').textContent='Error: Cannot load 3D engine. Check internet connection.'; document.getElementById('loadingText').style.color='#f43f5e';"></script>
+          onerror="document.getElementById('loadingText').textContent='Error: Cannot load 3D engine.'; document.getElementById('loadingText').style.color='#f43f5e';"></script>
   <script src="water_tank.js"></script>
 </body>
 </html>
 )rawliteral";
 const char PAGE_CSS[] PROGMEM = R"rawliteral(
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+/* System font stacks — no internet dependency */
 
 :root {
   --bg: #07090f;
@@ -878,12 +878,9 @@ const char PAGE_JS[] PROGMEM = R"rawliteral(
     $('sliderFill').style.width = pct + '%';
     $('sliderGlow').style.width = pct + '%';
 
-    const warn = $('lowWarning');
-    if (lvl < LOW_THRESH && lvl > 0.01) {
-      warn.classList.add('visible');
-    } else {
-      warn.classList.remove('visible');
-    }
+    // Red text when low, default when normal
+    const el = $('statPercent');
+    el.style.color = (lvl < LOW_THRESH && lvl > 0.01) ? 'var(--red)' : '';
   }
 
   // ══════════════════════════════════════════════════════════════

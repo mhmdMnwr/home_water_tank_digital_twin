@@ -529,12 +529,9 @@
     $('sliderFill').style.width = pct + '%';
     $('sliderGlow').style.width = pct + '%';
 
-    const warn = $('lowWarning');
-    if (lvl < LOW_THRESH && lvl > 0.01) {
-      warn.classList.add('visible');
-    } else {
-      warn.classList.remove('visible');
-    }
+    // Red text when low, default when normal
+    const el = $('statPercent');
+    el.style.color = (lvl < LOW_THRESH && lvl > 0.01) ? 'var(--red)' : '';
   }
 
   // ══════════════════════════════════════════════════════════════

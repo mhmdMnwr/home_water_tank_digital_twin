@@ -24,9 +24,16 @@
 //  Sensor Settings
 // ═══════════════════════════════════════════════════════════════
 #define SENSOR_TIMEOUT_US   30000   // Pulse timeout in µs (~5m max range)
-#define NUM_SAMPLES         5       // Number of readings to average
+#define NUM_SAMPLES         7       // Samples for median filter (use odd number)
 #define SAMPLE_DELAY_MS     10      // Delay between samples (ms)
 #define MAX_VALID_DISTANCE  400.0   // Max valid reading in cm
+
+// ═══════════════════════════════════════════════════════════════
+//  Spike Filtering
+// ═══════════════════════════════════════════════════════════════
+#define EMA_ALPHA           0.3     // EMA weight: 0.1=very smooth, 0.5=responsive
+#define MAX_CHANGE_CM       5.0     // Max allowed change per reading (cm)
+                                    // Rejects spikes bigger than this
 
 // ═══════════════════════════════════════════════════════════════
 //  Tank Dimensions (meters)
