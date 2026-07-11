@@ -41,6 +41,7 @@ html, body {
 body:active { cursor: grabbing; }
 
 #tankCanvas { display: block; width: 100%; height: 100%; position: fixed; inset: 0; z-index: 0; }
+.vignette { position: fixed; inset: 0; z-index: 1; pointer-events: none; background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.65) 100%); }
 
 /* ── Connection Badge (top-left) ── */
 .conn-badge {

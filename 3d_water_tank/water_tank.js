@@ -42,6 +42,15 @@
   let targetLevel = 0;
   let clock = 0;
 
+  // Animated counter display values
+  let displayedPct = 0;
+  let displayedVol = 0;
+
+  // Auto-rotate
+  let lastInteraction = 0;
+  const IDLE_TIMEOUT = 3000;       // Start auto-rotate after 3s idle
+  const AUTO_ROTATE_SPEED = 0.002; // Radians per frame
+
   // Drag rotation
   let isDragging = false;
   let prevMouse = { x: 0, y: 0 };
@@ -60,6 +69,14 @@
   let targetDoorAngle = -Math.PI / 2.5;
   let currentDoorAngle = -Math.PI / 2.5;
   let raycaster, mouse;
+
+  // Water color palette (blue → violet → red)
+  const COLOR_HIGH = new THREE.Color(0x003a8a);
+  const COLOR_MID  = new THREE.Color(0x4a1a8a);
+  const COLOR_LOW  = new THREE.Color(0x8a1a20);
+  const BODY_HIGH  = new THREE.Color(0x002e7a);
+  const BODY_MID   = new THREE.Color(0x3a107a);
+  const BODY_LOW   = new THREE.Color(0x7a1218);
 
   // ══════════════════════════════════════════════════════════════
   //  INIT
@@ -459,6 +476,7 @@
 
     c.addEventListener('mousedown', (e) => { 
       isDragging = true; 
+      lastInteraction = Date.now();
       prevMouse = { x: e.clientX, y: e.clientY }; 
       clickStartX = e.clientX; clickStartY = e.clientY;
       velX = 0; velY = 0; 
@@ -466,6 +484,7 @@
     });
     window.addEventListener('mouseup', (e) => { 
       isDragging = false; 
+      lastInteraction = Date.now();
       if (Math.abs(e.clientX - clickStartX) < 5 && Math.abs(e.clientY - clickStartY) < 5) {
         checkDoorClick(e.clientX, e.clientY);
       }
@@ -481,12 +500,14 @@
     c.addEventListener('touchstart', (e) => { 
       if (e.touches.length !== 1) return; 
       isDragging = true; 
+      lastInteraction = Date.now();
       prevMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY }; 
       clickStartX = prevMouse.x; clickStartY = prevMouse.y;
       velX = 0; velY = 0; 
     }, { passive: true });
     window.addEventListener('touchend', (e) => { 
       isDragging = false; 
+      lastInteraction = Date.now();
       if (e.changedTouches.length === 1) {
         const tx = e.changedTouches[0].clientX;
         const ty = e.changedTouches[0].clientY;
@@ -515,23 +536,45 @@
   }
 
   // ══════════════════════════════════════════════════════════════
-  //  UI SYNC
+  //  UI SYNC — with animated counters
   // ══════════════════════════════════════════════════════════════
   function syncUI(lvl) {
     const pct = Math.round(lvl * 100);
-    // Volume based on real tank dimensions
     const waterDepthM = lvl * TANK_DEPTH;
     const vol = Math.round(TANK_WIDTH * TANK_HEIGHT * waterDepthM * 1000);
 
-    $('statPercent').textContent = pct;
-    $('statVolume').textContent = vol.toLocaleString();
-    $('sliderReadout').textContent = pct + '%';
+    // Smooth animated counting
+    displayedPct += (pct - displayedPct) * 0.12;
+    displayedVol += (vol - displayedVol) * 0.12;
+
+    $('statPercent').textContent = Math.round(displayedPct);
+    $('statVolume').textContent = Math.round(displayedVol).toLocaleString();
+    $('sliderReadout').textContent = Math.round(displayedPct) + '%';
     $('sliderFill').style.width = pct + '%';
     $('sliderGlow').style.width = pct + '%';
 
     // Red text when low, default when normal
     const el = $('statPercent');
     el.style.color = (lvl < LOW_THRESH && lvl > 0.01) ? 'var(--red)' : '';
+  }
+
+  // ── Dynamic water color: blue → amber → red ──
+  function lerpWaterColors(lvl) {
+    let surfColor, bodyColor;
+    if (lvl > 0.5) {
+      surfColor = COLOR_HIGH;
+      bodyColor = BODY_HIGH;
+    } else if (lvl > LOW_THRESH) {
+      const t = (lvl - LOW_THRESH) / (0.5 - LOW_THRESH);
+      surfColor = COLOR_MID.clone().lerp(COLOR_HIGH, t);
+      bodyColor = BODY_MID.clone().lerp(BODY_HIGH, t);
+    } else {
+      const t = Math.max(0, lvl / LOW_THRESH);
+      surfColor = COLOR_LOW.clone().lerp(COLOR_MID, t);
+      bodyColor = BODY_LOW.clone().lerp(BODY_MID, t);
+    }
+    waterSurface.material.color.copy(surfColor);
+    if (waterBody) waterBody.material.color.copy(bodyColor);
   }
 
   // ══════════════════════════════════════════════════════════════
@@ -549,12 +592,20 @@
     // Smooth level easing
     waterLevel += (targetLevel - waterLevel) * 0.05;
 
-    // Inertia + ease back upright
+    // Auto-rotate when idle, inertia when recently touched
     if (!isDragging) {
-      tankGroup.rotation.y += velX;
-      tankGroup.rotation.x += velY;
-      tankGroup.rotation.x *= 0.92;
-      velX *= 0.90; velY *= 0.90;
+      const idle = Date.now() - lastInteraction > IDLE_TIMEOUT;
+      if (idle && Math.abs(velX) < 0.001) {
+        // Gentle auto-rotation
+        tankGroup.rotation.y += AUTO_ROTATE_SPEED;
+        // Slowly level the X tilt
+        tankGroup.rotation.x *= 0.98;
+      } else {
+        tankGroup.rotation.y += velX;
+        tankGroup.rotation.x += velY;
+        tankGroup.rotation.x *= 0.92;
+        velX *= 0.90; velY *= 0.90;
+      }
     }
 
     // Waves
@@ -572,6 +623,9 @@
     waterSurface.position.y = -VIS_H / 2 + waterLevel * VIS_H;
 
     rebuildBody(waterLevel);
+
+    // Dynamic water color
+    lerpWaterColors(waterLevel);
 
     // Bubbles
     const top = -VIS_H / 2 + waterLevel * VIS_H;
