@@ -1,354 +1,3 @@
-#ifndef WEB_CONTENT_H
-#define WEB_CONTENT_H
-const char PAGE_HTML[] PROGMEM = R"rawliteral(
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>3D Water Tank</title>
-  <link rel="stylesheet" href="water_tank.css">
-</head>
-<body>
-
-  <div class="loading-overlay" id="loadingOverlay">
-    <div class="loader-ring">
-      <svg viewBox="0 0 60 60"><circle cx="30" cy="30" r="26"/></svg>
-    </div>
-    <p class="loading-text" id="loadingText">Initializing</p>
-  </div>
-
-  <div class="conn-badge" id="connBadge">
-    <div class="conn-dot" id="connDot"></div>
-    <span id="connText">Connecting…</span>
-  </div>
-
-  <div class="stats-panel" id="statsPanel">
-    <div class="stat-block">
-      <div class="stat-number" id="statPercent">0</div>
-      <div class="stat-meta">
-        <span class="stat-unit">%</span>
-        <span class="stat-label">Level</span>
-      </div>
-    </div>
-    <div class="stat-separator"></div>
-    <div class="stat-block">
-      <div class="stat-number" id="statVolume">0</div>
-      <div class="stat-meta">
-        <span class="stat-unit">L</span>
-        <span class="stat-label">Volume</span>
-      </div>
-    </div>
-  </div>
-
-  <div class="low-warning" id="lowWarning">
-    <div class="warning-pulse"></div>
-    <svg class="warning-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-      <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
-      <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
-    </svg>
-    <div class="warning-content">
-      <span class="warning-title">Low Water Level</span>
-      <span class="warning-sub">Below 25% — Refill recommended</span>
-    </div>
-  </div>
-
-  <canvas id="tankCanvas"></canvas>
-  <div class="vignette"></div>
-
-  <div class="slider-panel" id="sliderPanel">
-    <div class="slider-track-wrapper">
-      <div class="slider-glow" id="sliderGlow"></div>
-      <input type="range" id="waterLevel" min="0" max="100" value="0" step="1">
-      <div class="slider-fill" id="sliderFill"></div>
-    </div>
-    <div class="slider-readout" id="sliderReadout">0%</div>
-  </div>
-
-  <div class="drag-hint" id="dragHint">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/>
-      <path d="M8 12h8M12 8v8"/>
-    </svg>
-    <span>Drag to rotate</span>
-  </div>
-
-  <script>
-    // Show loading progress
-    var _threeLoaded = false;
-    document.getElementById('loadingText').textContent = 'Loading 3D engine...';
-  </script>
-  <script src="three.min.js"
-          onload="_threeLoaded=true; document.getElementById('loadingText').textContent='Starting...';"
-          onerror="document.getElementById('loadingText').textContent='Error: Cannot load 3D engine.'; document.getElementById('loadingText').style.color='#f43f5e';"></script>
-  <script src="water_tank.js"></script>
-</body>
-</html>
-)rawliteral";
-const char PAGE_CSS[] PROGMEM = R"rawliteral(
-/* System font stacks — no internet dependency */
-
-:root {
-  --bg: #07090f;
-  --bg-card: rgba(12, 16, 24, 0.7);
-  --text: #eef2f7;
-  --text-dim: #8899ab;
-  --text-muted: #4a5568;
-  --cyan: #22d3ee;
-  --cyan-deep: #06b6d4;
-  --cyan-glow: rgba(34, 211, 238, 0.4);
-  --cyan-subtle: rgba(34, 211, 238, 0.08);
-  --blue: #3b82f6;
-  --red: #f43f5e;
-  --red-glow: rgba(244, 63, 94, 0.35);
-  --red-subtle: rgba(244, 63, 94, 0.08);
-  --green: #22c55e;
-  --green-glow: rgba(34, 197, 94, 0.35);
-  --amber: #fbbf24;
-  --glass: rgba(255, 255, 255, 0.04);
-  --glass-border: rgba(255, 255, 255, 0.06);
-  --glass-border-hover: rgba(255, 255, 255, 0.12);
-  --radius: 16px;
-  --radius-pill: 100px;
-  --ease: cubic-bezier(0.4, 0, 0.2, 1);
-  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-
-html, body {
-  height: 100%;
-  overflow: hidden;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-  background: var(--bg);
-  color: var(--text);
-  -webkit-font-smoothing: antialiased;
-  cursor: grab;
-  user-select: none;
-}
-body:active { cursor: grabbing; }
-
-#tankCanvas { display: block; width: 100%; height: 100%; position: fixed; inset: 0; z-index: 0; }
-.vignette { position: fixed; inset: 0; z-index: 1; pointer-events: none; background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.65) 100%); }
-
-/* ── Connection Badge (top-left) ── */
-.conn-badge {
-  position: fixed; top: 28px; left: 28px; z-index: 30;
-  display: flex; align-items: center; gap: 10px;
-  padding: 10px 18px;
-  background: var(--bg-card);
-  backdrop-filter: blur(30px) saturate(1.6);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-pill);
-  box-shadow: 0 4px 24px rgba(0,0,0,0.3);
-  animation: panelIn 0.7s var(--ease) 0.3s both;
-}
-.conn-dot {
-  width: 8px; height: 8px; border-radius: 50%;
-  background: var(--amber);
-  box-shadow: 0 0 8px rgba(251,191,36,0.4);
-  transition: all 0.4s var(--ease);
-}
-.conn-badge.live .conn-dot {
-  background: var(--green);
-  box-shadow: 0 0 8px var(--green-glow);
-  animation: pulse-dot 2s ease-in-out infinite;
-}
-.conn-badge.offline .conn-dot {
-  background: var(--red);
-  box-shadow: 0 0 8px var(--red-glow);
-}
-.conn-badge span {
-  font-size: 0.65rem; font-weight: 600;
-  letter-spacing: 0.06em; color: var(--text-dim);
-}
-@keyframes pulse-dot {
-  0%,100% { opacity: 1; } 50% { opacity: 0.5; }
-}
-
-/* ── Stats Panel (top-right) ── */
-.stats-panel {
-  position: fixed; top: 28px; right: 28px; z-index: 30;
-  display: flex; align-items: stretch; padding: 0;
-  background: var(--bg-card);
-  backdrop-filter: blur(30px) saturate(1.6);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius);
-  overflow: hidden;
-  box-shadow: 0 4px 30px rgba(0,0,0,0.3), 0 0 1px rgba(255,255,255,0.05) inset;
-  animation: panelIn 0.7s var(--ease) 0.4s both;
-}
-.stat-block {
-  display: flex; align-items: baseline; gap: 6px;
-  padding: 16px 22px; position: relative;
-}
-.stat-block::before {
-  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
-  background: linear-gradient(90deg, transparent, var(--cyan-subtle), transparent);
-}
-.stat-number {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 1.6rem; font-weight: 700;
-  letter-spacing: -0.03em; color: var(--text); line-height: 1;
-}
-.stat-meta { display: flex; flex-direction: column; gap: 1px; }
-.stat-unit {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.85rem; font-weight: 600; color: var(--cyan); line-height: 1;
-}
-.stat-label {
-  font-size: 0.58rem; font-weight: 600;
-  text-transform: uppercase; letter-spacing: 0.12em;
-  color: var(--text-muted); line-height: 1;
-}
-.stat-separator {
-  width: 1px; align-self: stretch; margin: 12px 0;
-  background: linear-gradient(180deg, transparent, var(--glass-border-hover), transparent);
-}
-
-/* ── Low Level Warning ── */
-.low-warning {
-  position: fixed; top: 28px; left: 50%; z-index: 35;
-  display: flex; align-items: center; gap: 14px;
-  padding: 14px 24px 14px 18px;
-  background: var(--red-subtle);
-  backdrop-filter: blur(24px);
-  border: 1px solid rgba(244,63,94,0.2);
-  border-radius: var(--radius);
-  box-shadow: 0 8px 32px rgba(244,63,94,0.12);
-  transform: translateX(-50%) translateY(-30px) scale(0.95);
-  opacity: 0; visibility: hidden; pointer-events: none;
-  transition: transform 0.5s var(--ease-spring), opacity 0.4s var(--ease), visibility 0.4s var(--ease);
-}
-.low-warning.visible {
-  opacity: 1; visibility: visible;
-  transform: translateX(-50%) translateY(0) scale(1);
-}
-.warning-pulse {
-  position: absolute; inset: -1px; border-radius: var(--radius);
-  border: 1px solid var(--red); opacity: 0;
-  animation: warningPulse 2s ease-in-out infinite;
-}
-@keyframes warningPulse {
-  0%,100% { opacity: 0; transform: scale(1); }
-  50% { opacity: 0.4; transform: scale(1.02); }
-}
-.warning-icon {
-  width: 22px; height: 22px; color: var(--red); flex-shrink: 0;
-  filter: drop-shadow(0 0 6px var(--red-glow));
-}
-.warning-content { display: flex; flex-direction: column; gap: 2px; }
-.warning-title { font-size: 0.78rem; font-weight: 700; color: var(--red); }
-.warning-sub { font-size: 0.62rem; font-weight: 500; color: rgba(244,63,94,0.6); }
-
-/* ── Bottom Slider ── */
-.slider-panel {
-  position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%); z-index: 30;
-  display: flex; align-items: center; gap: 18px;
-  padding: 14px 24px 14px 28px;
-  background: var(--bg-card);
-  backdrop-filter: blur(30px) saturate(1.6);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-pill);
-  box-shadow: 0 4px 30px rgba(0,0,0,0.3);
-  animation: sliderIn 0.7s var(--ease) 0.6s both;
-}
-.slider-panel.live-mode { display: none !important; }
-.slider-track-wrapper { position: relative; width: 260px; height: 36px; display: flex; align-items: center; }
-.slider-glow {
-  position: absolute; left: 0; top: 50%; transform: translateY(-50%);
-  width: 0%; height: 18px; background: var(--cyan-glow);
-  border-radius: 10px; filter: blur(12px); opacity: 0.4;
-  transition: width 0.35s var(--ease); pointer-events: none;
-}
-.slider-fill {
-  position: absolute; left: 0; top: 50%; transform: translateY(-50%);
-  height: 4px; width: 0%; background: linear-gradient(90deg, var(--cyan-deep), var(--cyan));
-  border-radius: 2px; pointer-events: none; transition: width 0.05s linear;
-}
-input[type="range"] {
-  -webkit-appearance: none; appearance: none;
-  position: relative; z-index: 2; width: 100%; height: 4px;
-  background: rgba(255,255,255,0.06); border-radius: 2px;
-  outline: none; cursor: pointer;
-}
-input[type="range"]::-webkit-slider-thumb {
-  -webkit-appearance: none; width: 22px; height: 22px; border-radius: 50%;
-  background: var(--text); cursor: grab;
-  box-shadow: 0 0 0 4px rgba(34,211,238,0.15), 0 2px 12px rgba(0,0,0,0.4), 0 0 20px var(--cyan-glow);
-  transition: transform 0.15s var(--ease-spring), box-shadow 0.25s var(--ease);
-}
-input[type="range"]::-webkit-slider-thumb:hover {
-  transform: scale(1.15);
-  box-shadow: 0 0 0 6px rgba(34,211,238,0.2), 0 2px 16px rgba(0,0,0,0.5), 0 0 28px var(--cyan-glow);
-}
-input[type="range"]::-moz-range-thumb {
-  width: 22px; height: 22px; border: none; border-radius: 50%;
-  background: var(--text); cursor: grab;
-  box-shadow: 0 0 0 4px rgba(34,211,238,0.15), 0 2px 12px rgba(0,0,0,0.4);
-}
-.slider-readout {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.9rem; font-weight: 700; color: var(--cyan);
-  min-width: 44px; text-align: center;
-}
-
-/* ── Drag Hint ── */
-.drag-hint {
-  position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%); z-index: 20;
-  display: flex; align-items: center; gap: 8px;
-  padding: 8px 16px; background: rgba(255,255,255,0.03);
-  border: 1px solid var(--glass-border); border-radius: var(--radius-pill);
-  animation: hintFade 4s ease 2s both; pointer-events: none;
-}
-.drag-hint svg { width: 16px; height: 16px; color: var(--text-muted); opacity: 0.6; }
-.drag-hint span { font-size: 0.65rem; font-weight: 500; color: var(--text-muted); letter-spacing: 0.04em; }
-@keyframes hintFade {
-  0% { opacity: 0; transform: translateX(-50%) translateY(6px); }
-  10% { opacity: 1; transform: translateX(-50%) translateY(0); }
-  70% { opacity: 1; } 100% { opacity: 0; }
-}
-
-/* ── Loading ── */
-.loading-overlay {
-  position: fixed; inset: 0; background: var(--bg);
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  z-index: 1000; transition: opacity 0.6s var(--ease), visibility 0.6s var(--ease);
-}
-.loading-overlay.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
-.loader-ring { width: 48px; height: 48px; margin-bottom: 18px; }
-.loader-ring svg { width: 100%; height: 100%; animation: loaderSpin 1.2s linear infinite; }
-.loader-ring circle {
-  fill: none; stroke: var(--cyan); stroke-width: 2.5;
-  stroke-dasharray: 120 40; stroke-linecap: round;
-}
-@keyframes loaderSpin { to { transform: rotate(360deg); } }
-.loading-text {
-  font-size: 0.75rem; font-weight: 500; color: var(--text-muted);
-  letter-spacing: 0.08em; text-transform: uppercase;
-}
-
-/* ── Animations ── */
-@keyframes panelIn {
-  from { opacity: 0; transform: translateY(-12px) scale(0.97); }
-  to   { opacity: 1; transform: translateY(0) scale(1); }
-}
-@keyframes sliderIn {
-  from { opacity: 0; transform: translateX(-50%) translateY(16px); }
-  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
-}
-
-/* ── Responsive ── */
-@media (max-width: 600px) {
-  .stats-panel { top: 16px; right: 16px; }
-  .stat-block { padding: 12px 16px; }
-  .stat-number { font-size: 1.25rem; }
-  .slider-panel { bottom: 20px; padding: 10px 18px; gap: 12px; }
-  .slider-track-wrapper { width: 180px; }
-  .conn-badge { top: 16px; left: 16px; padding: 8px 14px; }
-}
-)rawliteral";
-const char PAGE_JS[] PROGMEM = R"rawliteral(
 /**
  * 3D Water Tank — Digital Twin
  *
@@ -401,15 +50,15 @@ const char PAGE_JS[] PROGMEM = R"rawliteral(
   let fillingArrows = [];
   let fillingActive = false;
   let fillingOpacity = 0;
-  let lastStableLevel = 0;
-  const FILL_DELTA = 0.02;
-  const ARROW_COUNT = 4;
-  const ARROW_FADE_SPEED = 0.04;
+  let lastStableLevel = 0;          // baseline for 2% delta detection
+  const FILL_DELTA = 0.02;          // 2% threshold
+  const ARROW_COUNT = 4;            // number of chevron arrows
+  const ARROW_FADE_SPEED = 0.04;    // opacity per frame
 
   // Auto-rotate
   let lastInteraction = 0;
-  const IDLE_TIMEOUT = 3000;
-  const AUTO_ROTATE_SPEED = 0.002;
+  const IDLE_TIMEOUT = 3000;       // Start auto-rotate after 3s idle
+  const AUTO_ROTATE_SPEED = 0.002; // Radians per frame
 
   // Drag rotation
   let isDragging = false;
@@ -487,24 +136,35 @@ const char PAGE_JS[] PROGMEM = R"rawliteral(
   }
 
   // ══════════════════════════════════════════════════════════════
-  //  SENSOR POLLING
+  //  MQTT TELEMETRY (Cloud Dashboard)
   // ══════════════════════════════════════════════════════════════
+  let mqttClient = null;
+
   function startSensorPolling() {
-    fetchSensor(); // first call immediately
-    setInterval(fetchSensor, SENSOR_POLL_MS);
-  }
+    updateConnBadge('offline', 'Connecting MQTT...');
+    
+    // Connect via WebSockets to free public broker
+    const clientId = 'web-dashboard-' + Math.random().toString(16).substr(2, 8);
+    mqttClient = mqtt.connect('wss://broker.emqx.io:8084/mqtt', {
+      clientId: clientId,
+      clean: true,
+      connectTimeout: 4000,
+      reconnectPeriod: 5000,
+    });
 
-  function fetchSensor() {
-    fetch('/api/sensor')
-      .then((r) => {
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        return r.json();
-      })
-      .then((data) => {
+    mqttClient.on('connect', () => {
+      console.log('[MQTT] Connected to broker');
+      mqttClient.subscribe('home/water-tank/mnwr/sensor', { qos: 0 });
+      updateConnBadge('live', 'Waiting for Data...');
+    });
+
+    mqttClient.on('message', (topic, payload) => {
+      try {
+        const data = JSON.parse(payload.toString());
         const distanceCm = data.distance_cm;
-        if (distanceCm < 0) return; // sensor error, ignore
+        if (distanceCm < 0) return;
 
-        // Calculate water depth: total depth minus air gap
+        // Calculate water depth
         const distanceM = distanceCm / 100;
         const waterDepthM = Math.max(0, Math.min(TANK_DEPTH, TANK_DEPTH - distanceM));
         const pct = waterDepthM / TANK_DEPTH;
@@ -513,22 +173,19 @@ const char PAGE_JS[] PROGMEM = R"rawliteral(
         sensorActive = true;
         sensorFails = 0;
 
-        // Update slider to match sensor (visual feedback)
         $('waterLevel').value = Math.round(pct * 100);
-
-        // Disable manual slider while sensor is live
         $('sliderPanel').classList.add('live-mode');
+        updateConnBadge('live', 'Live Telemetry');
+      } catch (err) {
+        console.error('[MQTT] Parse error:', err);
+      }
+    });
 
-        updateConnBadge('live', 'Sensor Live');
-      })
-      .catch(() => {
-        sensorFails++;
-        if (sensorFails >= 3) {
-          sensorActive = false;
-          $('sliderPanel').classList.remove('live-mode');
-          updateConnBadge('offline', 'Sensor Offline');
-        }
-      });
+    mqttClient.on('close', () => {
+      sensorActive = false;
+      $('sliderPanel').classList.remove('live-mode');
+      updateConnBadge('offline', 'Broker Offline');
+    });
   }
 
   function updateConnBadge(state, text) {
@@ -820,28 +477,36 @@ const char PAGE_JS[] PROGMEM = R"rawliteral(
   //  FILLING ARROWS — full arrows on all 4 sides of tank
   // ══════════════════════════════════════════════════════════════
   function makeArrowShape() {
+    // Full arrow: big triangle head + thick rectangular stem
     const shape = new THREE.Shape();
-    const headW = 0.14;
-    const headH = 0.08;
-    const stemW = 0.035;
-    const stemH = 0.09;
+    const headW = 0.14;   // half-width of triangle head
+    const headH = 0.08;   // height of triangle head
+    const stemW = 0.035;  // half-width of stem
+    const stemH = 0.09;   // height of stem
+    // Stem (bottom)
     shape.moveTo(-stemW, 0);
     shape.lineTo(-stemW, stemH);
+    // Left side of head
     shape.lineTo(-headW, stemH);
+    // Tip
     shape.lineTo(0, stemH + headH);
+    // Right side of head
     shape.lineTo(headW, stemH);
     shape.lineTo(stemW, stemH);
+    // Right stem
     shape.lineTo(stemW, 0);
     shape.closePath();
     return shape;
   }
 
   function buildFillingArrows() {
+    // Bright green glow light
     arrowGlowLight = new THREE.PointLight(0x39ff14, 0, 10);
     arrowGlowLight.position.set(0, 0, 0);
     tankGroup.add(arrowGlowLight);
 
     const arrowShape = makeArrowShape();
+    // Thick extrude + bevel for real 3D look
     const arrowGeo = new THREE.ExtrudeGeometry(arrowShape, {
       depth: 0.05,
       bevelEnabled: true,
@@ -852,11 +517,16 @@ const char PAGE_JS[] PROGMEM = R"rawliteral(
 
     fillingArrows = [];
 
+    // 4 sides: front, back, right, left
     const GAP = 0.07;
     const sides = [
+      // Front wall (z+ face)
       { axis: 'x', fixedVal: VIS_D / 2 + GAP, rotY: 0,              spread: VIS_W * 0.75, count: 3 },
+      // Back wall (z- face)
       { axis: 'x', fixedVal: -(VIS_D / 2 + GAP), rotY: Math.PI,     spread: VIS_W * 0.75, count: 3 },
+      // Right wall (x+ face)
       { axis: 'z', fixedVal: VIS_W / 2 + GAP, rotY: -Math.PI / 2,   spread: VIS_D * 0.7,  count: 2 },
+      // Left wall (x- face)
       { axis: 'z', fixedVal: -(VIS_W / 2 + GAP), rotY: Math.PI / 2, spread: VIS_D * 0.7,  count: 2 },
     ];
 
@@ -865,6 +535,7 @@ const char PAGE_JS[] PROGMEM = R"rawliteral(
       for (let n = 0; n < side.count; n++) {
         const group = new THREE.Group();
 
+        // Neon green — MeshBasicMaterial ignores lighting = always full bright
         const mat = new THREE.MeshBasicMaterial({
           color: 0x39ff14,
           transparent: true,
@@ -877,6 +548,7 @@ const char PAGE_JS[] PROGMEM = R"rawliteral(
         mesh.renderOrder = 10;
         group.add(mesh);
 
+        // Spread arrows evenly along the wall
         const spreadPos = (n / Math.max(1, side.count - 1) - 0.5) * side.spread;
 
         if (side.axis === 'x') {
@@ -915,6 +587,7 @@ const char PAGE_JS[] PROGMEM = R"rawliteral(
     fillingOpacity += (targetOp - fillingOpacity) * ARROW_FADE_SPEED;
     if (fillingOpacity < 0.005) fillingOpacity = 0;
 
+    // Neon glow
     arrowGlowLight.intensity = fillingOpacity * 8;
     arrowGlowLight.position.y = -VIS_H / 2 + waterLevel * VIS_H * 0.5;
 
@@ -928,6 +601,7 @@ const char PAGE_JS[] PROGMEM = R"rawliteral(
 
       arrow.position.y = y;
 
+      // Fade: invisible at edges, fully bright in middle
       const edgeFade = Math.sin(t * Math.PI);
       const finalOp = fillingOpacity * edgeFade * 0.95;
 
@@ -1083,7 +757,9 @@ const char PAGE_JS[] PROGMEM = R"rawliteral(
     if (!isDragging) {
       const idle = Date.now() - lastInteraction > IDLE_TIMEOUT;
       if (idle && Math.abs(velX) < 0.001) {
+        // Gentle auto-rotation
         tankGroup.rotation.y += AUTO_ROTATE_SPEED;
+        // Slowly level the X tilt
         tankGroup.rotation.x *= 0.98;
       } else {
         tankGroup.rotation.y += velX;
@@ -1152,5 +828,3 @@ const char PAGE_JS[] PROGMEM = R"rawliteral(
 
   boot();
 })();
-)rawliteral";
-#endif

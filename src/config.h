@@ -45,4 +45,13 @@
 // ═══════════════════════════════════════════════════════════════
 #define WEB_SERVER_PORT  80
 
+// ═══════════════════════════════════════════════════════════════
+//  MQTT — Cloud Telemetry (free public broker, no signup)
+// ═══════════════════════════════════════════════════════════════
+#define MQTT_BROKER      "broker.emqx.io"
+#define MQTT_PORT        1883
+#define MQTT_TOPIC       "home/water-tank/mnwr/sensor"
+#define MQTT_CLIENT_ID   "esp32-water-tank-mnwr"
+#define MQTT_PUBLISH_MS  5000   // Publish every 5 seconds
+
 #endif // CONFIG_H

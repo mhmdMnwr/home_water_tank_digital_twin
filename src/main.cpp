@@ -11,6 +11,7 @@
 #include "config.h"
 #include "web_content.h"
 #include "embedded/three_js_gz.h"
+#include <PubSubClient.h>
 
 // ── Network ──
 IPAddress local_IP(STATIC_IP);
@@ -20,6 +21,8 @@ IPAddress dns1(DNS_PRIMARY);
 IPAddress dns2(DNS_SECONDARY);
 
 WebServer server(WEB_SERVER_PORT);
+WiFiClient wifiClient;
+PubSubClient mqttClient(wifiClient);
 
 // ── Sensor state (non-blocking) ──
 float lastDistance = -1.0;
@@ -221,6 +224,8 @@ void setup() {
   Serial.println("  ESP32 Water Tank — Digital Twin");
   Serial.println("══════════════════════════════════");
 
+  mqttClient.setServer(MQTT_BROKER, MQTT_PORT);
+
   // Sensor pins
   pinMode(TRIG_PIN, OUTPUT);
   pinMode(ECHO_PIN, INPUT);
@@ -285,6 +290,22 @@ void setup() {
 // ═══════════════════════════════════════════════════════════════
 
 unsigned long lastWifiCheck = 0;
+unsigned long lastMqttPublish = 0;
+
+void reconnectMQTT() {
+  if (WiFi.status() == WL_CONNECTED && !mqttClient.connected()) {
+    Serial.print("[MQTT] Attempting connection to ");
+    Serial.print(MQTT_BROKER);
+    Serial.print("...");
+    if (mqttClient.connect(MQTT_CLIENT_ID)) {
+      Serial.println(" connected");
+    } else {
+      Serial.print(" failed, rc=");
+      Serial.print(mqttClient.state());
+      Serial.println(" - will try again later");
+    }
+  }
+}
 
 void loop() {
   // Check WiFi connection every 10 seconds
@@ -300,4 +321,21 @@ void loop() {
 
   server.handleClient();
   updateSensor();  // Non-blocking — reads sensor every 500ms
+
+  // Non-blocking MQTT reconnect (every 5 seconds if disconnected)
+  if (!mqttClient.connected() && millis() - lastWifiCheck >= 5000) {
+    reconnectMQTT();
+  }
+  mqttClient.loop();
+
+  // Publish telemetry every MQTT_PUBLISH_MS
+  if (mqttClient.connected() && millis() - lastMqttPublish >= MQTT_PUBLISH_MS) {
+    lastMqttPublish = millis();
+    char payload[128];
+    snprintf(payload, sizeof(payload), 
+             "{\"distance_cm\":%.1f,\"tank_depth_cm\":%d,\"sensor_ok\":%s}", 
+             lastDistance, TANK_DEPTH_CM, lastDistance > 0 ? "true" : "false");
+    mqttClient.publish(MQTT_TOPIC, payload);
+    Serial.printf("[MQTT] Published: %s\n", payload);
+  }
 }
