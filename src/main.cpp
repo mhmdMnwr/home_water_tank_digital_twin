@@ -9,8 +9,6 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include "config.h"
-#include "web_content.h"
-#include "embedded/three_js_gz.h"
 #include <PubSubClient.h>
 
 // ── Network ──
@@ -29,6 +27,10 @@ float lastDistance = -1.0;
 float emaDistance   = -1.0;   // EMA-filtered distance
 unsigned long lastSensorRead = 0;
 const unsigned long SENSOR_INTERVAL = 500;  // Read sensor every 500ms
+
+bool isFilling = false;
+float lastStableDistance = -1.0;
+const float FILL_DELTA_CM = 3.6; // Trigger filling arrows if distance drops by 3.6cm
 
 // ═══════════════════════════════════════════════════════════════
 //  ULTRASONIC SENSOR — 3-Stage Spike Filter
@@ -122,6 +124,20 @@ void updateSensor() {
 
   lastDistance = filtered;
 
+  if (lastStableDistance < 0) {
+    lastStableDistance = filtered;
+    isFilling = false;
+  } else {
+    float delta = filtered - lastStableDistance;
+    if (delta <= -FILL_DELTA_CM) { // Distance dropped, water level rising
+      isFilling = true;
+      lastStableDistance = filtered;
+    } else if (delta >= FILL_DELTA_CM) { // Distance rose or stable, water level dropping/stable
+      isFilling = false;
+      lastStableDistance = filtered;
+    }
+  }
+
   Serial.printf("[SENSOR] raw_median=%.1f  ema=%.1f  final=%.1f cm  valid=%d/%d\n",
                 median, emaDistance, lastDistance, validCount, NUM_SAMPLES);
 }
@@ -130,61 +146,15 @@ void updateSensor() {
 //  REQUEST HANDLERS — with full serial logging
 // ═══════════════════════════════════════════════════════════════
 
-void servePROGMEM(const char* contentType, const char* pgmContent) {
-  size_t len = strlen(pgmContent);
-  server.setContentLength(len);
-  server.send(200, contentType, "");
-
-  const size_t CHUNK_SIZE = 2048;
-  size_t sent = 0;
-  while (sent < len) {
-    size_t toSend = len - sent;
-    if (toSend > CHUNK_SIZE) toSend = CHUNK_SIZE;
-    server.sendContent(pgmContent + sent, toSend);
-    sent += toSend;
-  }
-  Serial.printf("[SERVE] %s  (%d bytes)\n", contentType, (int)len);
-}
-
-void handleRoot() {
-  Serial.println("[REQ] GET /");
-  servePROGMEM("text/html", PAGE_HTML);
-}
-
-void handleCSS() {
-  Serial.println("[REQ] GET /water_tank.css");
-  servePROGMEM("text/css", PAGE_CSS);
-}
-
-void handleJS() {
-  Serial.println("[REQ] GET /water_tank.js");
-  servePROGMEM("application/javascript", PAGE_JS);
-}
-
-void handleThreeJS() {
-  Serial.printf("[REQ] GET /three.min.js  (%d bytes gzipped)\n", (int)THREE_JS_GZ_LEN);
-  server.sendHeader("Content-Encoding", "gzip");
-  server.sendHeader("Cache-Control", "public, max-age=31536000");  // Cache 1 year
-  server.setContentLength(THREE_JS_GZ_LEN);
-  server.send(200, "application/javascript", "");
-
-  const size_t CHUNK_SIZE = 2048;
-  size_t sent = 0;
-  while (sent < THREE_JS_GZ_LEN) {
-    size_t toSend = THREE_JS_GZ_LEN - sent;
-    if (toSend > CHUNK_SIZE) toSend = CHUNK_SIZE;
-    server.sendContent((const char*)(THREE_JS_GZ + sent), toSend);
-    sent += toSend;
-  }
-}
+// HTTP endpoints for serving static files removed because we are only using the cloud dashboard now.
 
 void handleSensor() {
   Serial.printf("[REQ] GET /api/sensor  → %.1f cm\n", lastDistance);
 
   char json[128];
   snprintf(json, sizeof(json), 
-           "{\"distance_cm\":%.1f,\"tank_depth_cm\":%d,\"sensor_ok\":%s}", 
-           lastDistance, TANK_DEPTH_CM, lastDistance > 0 ? "true" : "false");
+           "{\"distance_cm\":%.1f,\"tank_depth_cm\":%d,\"sensor_ok\":%s,\"is_filling\":%s}", 
+           lastDistance, TANK_DEPTH_CM, lastDistance > 0 ? "true" : "false", isFilling ? "true" : "false");
 
   server.sendHeader("Access-Control-Allow-Origin", "*");
   server.sendHeader("Cache-Control", "no-cache");
@@ -195,9 +165,8 @@ void handleDebug() {
   Serial.println("[REQ] GET /api/debug");
   char info[256];
   snprintf(info, sizeof(info), 
-           "{\"heap_free\":%u,\"html_len\":%u,\"css_len\":%u,\"js_len\":%u,\"last_distance\":%.1f,\"uptime_ms\":%lu}",
-           ESP.getFreeHeap(), (unsigned int)strlen(PAGE_HTML), (unsigned int)strlen(PAGE_CSS), 
-           (unsigned int)strlen(PAGE_JS), lastDistance, millis());
+           "{\"heap_free\":%u,\"last_distance\":%.1f,\"uptime_ms\":%lu}",
+           ESP.getFreeHeap(), lastDistance, millis());
            
   server.send(200, "application/json", info);
 }
@@ -265,12 +234,7 @@ void setup() {
     return;
   }
 
-  // Register routes
-  server.on("/",                handleRoot);
-  server.on("/water_tank.html", handleRoot);
-  server.on("/water_tank.css",  handleCSS);
-  server.on("/water_tank.js",   handleJS);
-  server.on("/three.min.js",    handleThreeJS);
+  // Register API routes
   server.on("/api/sensor",      handleSensor);
   server.on("/api/debug",       handleDebug);
   server.on("/favicon.ico",     handleFavicon);
@@ -333,8 +297,8 @@ void loop() {
     lastMqttPublish = millis();
     char payload[128];
     snprintf(payload, sizeof(payload), 
-             "{\"distance_cm\":%.1f,\"tank_depth_cm\":%d,\"sensor_ok\":%s}", 
-             lastDistance, TANK_DEPTH_CM, lastDistance > 0 ? "true" : "false");
+             "{\"distance_cm\":%.1f,\"tank_depth_cm\":%d,\"sensor_ok\":%s,\"is_filling\":%s}", 
+             lastDistance, TANK_DEPTH_CM, lastDistance > 0 ? "true" : "false", isFilling ? "true" : "false");
     mqttClient.publish(MQTT_TOPIC, payload);
     Serial.printf("[MQTT] Published: %s\n", payload);
   }

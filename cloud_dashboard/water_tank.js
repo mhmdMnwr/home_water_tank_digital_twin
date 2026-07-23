@@ -51,6 +51,7 @@
   let fillingActive = false;
   let fillingOpacity = 0;
   let lastStableLevel = 0;          // baseline for 2% delta detection
+  let isFirstReading = true;        // Prevents false filling arrows on initial load/connection
   const FILL_DELTA = 0.02;          // 2% threshold
   const ARROW_COUNT = 4;            // number of chevron arrows
   const ARROW_FADE_SPEED = 0.04;    // opacity per frame
@@ -172,6 +173,11 @@
         targetLevel = pct;
         sensorActive = true;
         sensorFails = 0;
+        
+        if (isFirstReading) {
+          lastStableLevel = pct;
+          isFirstReading = false;
+        }
 
         $('waterLevel').value = Math.round(pct * 100);
         $('sliderPanel').classList.add('live-mode');
